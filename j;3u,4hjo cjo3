@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<title>自我毀滅網頁</title>
+<style>
+  body {
+    background: black;
+    color: white;
+    font-family: monospace;
+    text-align: center;
+    padding-top: 20%;
+    overflow: hidden;
+    transition: background 2s;
+  }
+
+  #text {
+    font-size: 40px;
+    opacity: 1;
+    transition: opacity 2s;
+    letter-spacing: 2px;
+  }
+
+  .glitch {
+    animation: glitch 0.2s infinite;
+  }
+
+  @keyframes glitch {
+    0% { transform: translate(2px, -2px); }
+    50% { transform: translate(-2px, 2px); }
+    100% { transform: translate(1px, -1px); }
+  }
+</style>
+</head>
+<body>
+
+<div id="text" class="glitch">正在啟動自我毀滅程序...</div>
+
+<script>
+  // 3 秒後開始淡出文字
+  setTimeout(() => {
+    document.getElementById("text").style.opacity = 0;
+  }, 3000);
+
+  // 5 秒後把背景慢慢變黑
+  setTimeout(() => {
+    document.body.style.background = "#000";
+  }, 5000);
+
+  // 7 秒後嘗試關閉網頁
+  setTimeout(() => {
+    // 嘗試關閉（只有某些瀏覽器或用戶允許才會成功）
+    window.open('', '_self');
+    window.close();
+  }, 7000);
+</script>
+
+</body>
+</html>
