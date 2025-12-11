@@ -24,7 +24,7 @@ html,body{height:100%;margin:0;overflow:hidden;background:#0b0b10;}
     display:none;
     position:fixed;
     inset:0;
-    background:rgba(0,0,0,0.3); /* 半透明 */
+    background:rgba(0,0,0,0); /* 透明背景 */
     z-index:9999;
     display:flex;
     align-items:center;
@@ -33,8 +33,6 @@ html,body{height:100%;margin:0;overflow:hidden;background:#0b0b10;}
     font-family:sans-serif;
     font-size:2em;
     color:#fff;
-    padding:20px;
-    box-sizing:border-box;
     pointer-events:none; /* 點擊穿透 */
 }
 #dialogOverlay span.red{
@@ -194,5 +192,85 @@ function drawExplosions(t){
         g.addColorStop(0,'rgba(255,255,220,0.95)');
         g.addColorStop(0.4,'rgba(255,220,120,0.7)');
         g.addColorStop(1,'rgba(255,120,40,0)');
-        ctx.fi
+        ctx.fillStyle=g; ctx.beginPath(); ctx.arc(ex.x,ex.y,R,0,Math.PI*2); ctx.fill();
+        ctx.strokeStyle=`rgba(255,240,160,${0.9*(1-dt)})`; ctx.lineWidth=2;
+        for(let a=0;a<8;a++){const ang=a*(Math.PI*2/8)+dt*2; ctx.beginPath(); ctx.moveTo(ex.x+Math.cos(ang)*R*0.4,ex.y+Math.sin(ang)*R*0.4); ctx.lineTo(ex.x+Math.cos(ang)*(R*1.2+dt*40),ex.y+Math.sin(ang)*(R*1.2+dt*40)); ctx.stroke();}
+        ctx.restore();
+    }
+}
 
+// -------------------- 地面效果 + 魔力過多 --------------------
+function spawnGroundEffect(x,y){
+    const s=0.9+Math.random()*0.8;
+    groundEffects.push({x,y,life:1.0,scale:s,rotation:Math.random()*Math.PI*2});
+    if(groundEffects.length>effectLimit && !overLimitTriggered){ overLimitTriggered=true; triggerOverLimitSequence(); }
+}
+function drawGroundEffects(dt){
+    for(let i=groundEffects.length-1;i>=0;i--){
+        const ge=groundEffects[i]; ge.life-=dt*0.02; ge.scale+=0.002;
+        if(ge.life<=0){groundEffects.splice(i,1); continue;}
+        const baseSize=110*ge.scale;
+        if(crackLoaded){ ctx.save(); ctx.globalAlpha=0.9*ge.life; ctx.translate(ge.x,ge.y); ctx.rotate(ge.rotation); ctx.drawImage(crackImg,-baseSize,-baseSize/1.6,baseSize*2,baseSize*1.2); ctx.restore();}
+        else{ ctx.save(); ctx.globalAlpha=0.6*ge.life; ctx.fillStyle='#221'; ctx.beginPath(); ctx.ellipse(ge.x,ge.y,baseSize,baseSize*0.5,ge.rotation,0,Math.PI*2); ctx.fill(); ctx.restore();}
+        if(flameLoaded){ ctx.save(); ctx.globalAlpha=0.95*ge.life; ctx.translate(ge.x,ge.y-baseSize*0.08); ctx.rotate(-ge.rotation*0.4); ctx.drawImage(flameImg,-baseSize*0.7,-baseSize*0.9,baseSize*1.4,baseSize*1.4); ctx.restore();}
+        else{ const g=ctx.createRadialGradient(ge.x,ge.y-baseSize*0.08,10,ge.x,ge.y-baseSize*0.08,baseSize); g.addColorStop(0,`rgba(255,220,120,${0.95*ge.life})`); g.addColorStop(0.4,`rgba(255,120,30,${0.7*ge.life})`); g.addColorStop(1,`rgba(40,10,10,0)`); ctx.save(); ctx.globalAlpha=1; ctx.fillStyle=g; ctx.beginPath(); ctx.arc(ge.x,ge.y-baseSize*0.08,baseSize,0,Math.PI*2); ctx.fill(); ctx.restore();}
+    }
+}
+
+// -------------------- 魔力過多流程 --------------------
+function triggerOverLimitSequence(){
+    // 屏幕抖動
+    let shakeCount=0;
+    const shakeInterval=setInterval(()=>{
+        const offsetX=(Math.random()-0.5)*20;
+        const offsetY=(Math.random()-0.5)*20;
+        canvas.style.transform=`translate(${offsetX}px,${offsetY}px)`;
+        shakeCount++;
+        if(shakeCount>15){ 
+            clearInterval(shakeInterval); 
+            canvas.style.transform=''; // 重置
+            showFirstDialog();
+        }
+    },30);
+}
+
+function showFirstDialog(){
+    const overlay=document.getElementById('dialogOverlay');
+    overlay.style.display='flex';
+    overlay.style.opacity=1;
+    overlay.innerHTML='哈哈!我終於成功了，但是魔力失控後，一切都會…都會…';
+    setTimeout(showSecondDialog,3000);
+}
+
+function showSecondDialog(){
+    const overlay=document.getElementById('dialogOverlay');
+    overlay.innerHTML='<span class="red">歸零！</span>';
+    setTimeout(()=>{
+        overlay.style.transition='opacity 1s';
+        overlay.style.opacity=0;
+        setTimeout(()=>{ document.title='無回應'; location.reload(); },1000);
+    },1500);
+}
+
+// -------------------- 角色繪製 --------------------
+function drawCharacter(){
+    if(characterLoaded){ ctx.drawImage(characterImg, character.x-character.size, character.y-character.size, character.size*2, character.size*2);}
+    else{ ctx.save(); ctx.fillStyle='#5fd0ff'; ctx.beginPath(); ctx.arc(character.x,character.y,character.size,0,Math.PI*2); ctx.fill(); ctx.strokeStyle='#32a0ff'; ctx.lineWidth=3; ctx.stroke(); ctx.restore();}
+}
+
+// -------------------- 主迴圈 --------------------
+let lastTime=now();
+function loop(){
+    if(!running) return;
+    const t=now(); const dt=Math.min(0.05,t-lastTime); lastTime=t;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    moveCharacter(); drawCharacter();
+    for(let i=projectiles.length-1;i>=0;i--){drawProjectile(projectiles[i],t);}
+    updateAndDrawParticles(dt); drawExplosions(t); drawGroundEffects(dt);
+    requestAnimationFrame(loop);
+}
+
+startIfNeeded(); // 啟動動畫
+</script>
+</body>
+</html>
