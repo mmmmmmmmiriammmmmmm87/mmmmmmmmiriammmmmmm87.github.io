@@ -4,26 +4,47 @@
 <meta charset="UTF-8" />
 <title>流星魔法</title>
 <style>
-html,body{height:100%;}
-body{margin:0; background:#0b0b10; overflow:hidden;}
-#gameCanvas{display:block}
-
-/* 對話框佔滿畫面 */
+html,body{height:100%;margin:0;overflow:hidden;background:#0b0b10;}
+#gameCanvas{display:block;}
+/* 左上角提示 */
 #hint{
     position: fixed;
-    inset: 0; /* top/right/bottom/left 全部 0 */
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 2em;
-    text-align: center;
+    top: 12px; left: 12px;
     color: #fff;
     font-family: sans-serif;
-    background: rgba(0,0,0,0.5);
+    background: rgba(0,0,0,0.7);
+    padding: 8px 12px;
+    border-radius: 6px;
     z-index:10;
-    pointer-events: none; /* 不阻擋點擊 */
+    font-size: 1.2em;
 }
 
+/* 魔力過多對話框 */
+#dialogOverlay{
+    display:none;
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,0.7);
+    z-index:9999;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    text-align:center;
+    font-family:sans-serif;
+    font-size:2em;
+    color:#fff;
+    padding:20px;
+    box-sizing:border-box;
+}
+#dialogOverlay span.red{
+    background:red;
+    color:white;
+    padding:0 8px;
+    margin-left:6px;
+    border-radius:4px;
+}
+
+/* 當機畫面 */
 #crashOverlay{
     display:none;
     position:fixed;
@@ -46,282 +67,212 @@ body{margin:0; background:#0b0b10; overflow:hidden;}
 </style>
 </head>
 <body>
-<div id="hint">點擊任意處發射流星魔法（流星：內藍外黃，尾巴：彗星尾+粒子）。</div>
+<div id="hint">點擊任意一處發射魔法</div>
 <canvas id="gameCanvas"></canvas>
+
+<!-- 魔力過多對話框 -->
+<div id="dialogOverlay"></div>
+
 <div id="crashOverlay">
     <div style="text-align:center">
         <h1>系統當機</h1>
         <p>魔法能量過載，動畫已停止。</p>
     </div>
 </div>
+
 <script>
 // -------------------- 設定 --------------------
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
-function resize(){canvas.width = window.innerWidth; canvas.height = window.innerHeight}
+function resize(){canvas.width = window.innerWidth; canvas.height = window.innerHeight;}
 window.addEventListener('resize', resize);
 resize();
 
-// 資源（若沒有對應圖片，程式會 fallback 繪製）
-const characterImg = new Image();
-characterImg.src = 'character.png';
-let characterLoaded = false;
-characterImg.onload = () => { characterLoaded = true; startIfNeeded(); };
-characterImg.onerror = () => { characterLoaded = false; startIfNeeded(); };
-const flameImg = new Image();
-flameImg.src = 'flame.png';
-let flameLoaded = false;
-flameImg.onload = () => flameLoaded = true;
-flameImg.onerror = () => flameLoaded = false;
-const crackImg = new Image();
-crackImg.src = 'crack.png';
-let crackLoaded = false;
-crackImg.onload = () => crackLoaded = true;
-crackImg.onerror = () => crackLoaded = false;
-if (characterImg.complete && characterImg.naturalWidth !== 0) characterLoaded = true;
-if (flameImg.complete && flameImg.naturalWidth !== 0) flameLoaded = true;
-if (crackImg.complete && crackImg.naturalWidth !== 0) crackLoaded = true;
+// -------------------- 資源 --------------------
+const characterImg = new Image(); characterImg.src='character.png';
+let characterLoaded=false; characterImg.onload=()=>{characterLoaded=true; startIfNeeded();};
+characterImg.onerror=()=>{characterLoaded=false; startIfNeeded();};
+const flameImg=new Image(); flameImg.src='flame.png';
+let flameLoaded=false; flameImg.onload=()=>flameLoaded=true; flameImg.onerror=()=>flameLoaded=false;
+const crackImg=new Image(); crackImg.src='crack.png';
+let crackLoaded=false; crackImg.onload=()=>crackLoaded=true; crackImg.onerror=()=>crackLoaded=false;
 
 // -------------------- 參數 --------------------
-const characterHeadPx = 50;
-const projectileRadius = Math.round(characterHeadPx * 0.95);
-const projectileTravelTime = 1.0; // 流星慢一點
-const effectLimit = 25;
+const characterHeadPx=50;
+const projectileRadius=Math.round(characterHeadPx*0.95);
+const projectileTravelTime=1.0;
+const effectLimit=25;
 
 // -------------------- 世界狀態 --------------------
-let running = false;
-let character = { x: canvas.width/2, y: canvas.height/2, size: characterHeadPx/2, vx:(Math.random()-0.5)*3, vy:(Math.random()-0.5)*3 };
-let projectiles = [];
-let explosions = [];
-let groundEffects = [];
-let particles = [];
+let running=false;
+let character={x:canvas.width/2,y:canvas.height/2,size:characterHeadPx/2,vx:(Math.random()-0.5)*3,vy:(Math.random()-0.5)*3};
+let projectiles=[], explosions=[], groundEffects=[], particles=[];
 
 // -------------------- 工具 --------------------
-function now(){return performance.now()/1000}
-function lerp(a,b,t){return a + (b-a)*t}
-function startIfNeeded(){ if (!running){ running = true; requestAnimationFrame(loop); } }
+function now(){return performance.now()/1000;}
+function lerp(a,b,t){return a+(b-a)*t;}
+function startIfNeeded(){if(!running){running=true;requestAnimationFrame(loop);}}
 
 // -------------------- 角色移動 --------------------
 function moveCharacter(){
-    character.x += character.vx;
-    character.y += character.vy;
-    if (character.x - character.size < 0 || character.x + character.size > canvas.width) character.vx *= -1;
-    if (character.y - character.size < 0 || character.y + character.size > canvas.height) character.vy *= -1;
+    character.x+=character.vx; character.y+=character.vy;
+    if(character.x-character.size<0||character.x+character.size>canvas.width) character.vx*=-1;
+    if(character.y-character.size<0||character.y+character.size>canvas.height) character.vy*=-1;
 }
 
 // -------------------- 點擊發射流星 --------------------
-canvas.addEventListener('click', (e)=>{
-    const rect = canvas.getBoundingClientRect();
-    const tx = e.clientX - rect.left;
-    const ty = e.clientY - rect.top;
-    spawnProjectile(character.x, character.y, tx, ty);
+canvas.addEventListener('click',(e)=>{
+    const rect=canvas.getBoundingClientRect();
+    const tx=e.clientX-rect.left;
+    const ty=e.clientY-rect.top;
+    spawnProjectile(character.x,character.y,tx,ty);
 });
-function spawnProjectile(sx, sy, tx, ty){
-    const t0 = now();
-    const t1 = t0 + projectileTravelTime;
-    const angle = Math.atan2(ty - sy, tx - sx);
-    projectiles.push({ sx, sy, tx, ty, x: sx, y: sy, t0, t1, angle, radius: projectileRadius, tailTimer:0 });
+function spawnProjectile(sx,sy,tx,ty){
+    const t0=now(), t1=t0+projectileTravelTime;
+    const angle=Math.atan2(ty-sy,tx-sx);
+    projectiles.push({sx,sy,tx,ty,x:sx,y:sy,t0,t1,angle,radius:projectileRadius,tailTimer:0});
 }
 
 // -------------------- 流星繪製 --------------------
-function drawProjectile(p, t){
-    const progress = Math.min(1, (t - p.t0) / (p.t1 - p.t0));
-    p.x = lerp(p.sx, p.tx, progress);
-    p.y = lerp(p.sy, p.ty, progress);
+function drawProjectile(p,t){
+    const progress=Math.min(1,(t-p.t0)/(p.t1-p.t0));
+    p.x=lerp(p.sx,p.tx,progress); p.y=lerp(p.sy,p.ty,progress);
 
-    p.tailTimer += 1;
-    if (p.tailTimer % 2 === 0){
-        particles.push({ x: p.x - Math.cos(p.angle)*p.radius*0.6, y: p.y - Math.sin(p.angle)*p.radius*0.6,
-            vx: (Math.random()-0.5)*0.8, vy: (Math.random()-0.5)*0.8-0.2, life: 0.45 + Math.random()*0.3, size: Math.random()*6+2, hueShift: Math.random() });
+    p.tailTimer++; 
+    if(p.tailTimer%2===0){
+        particles.push({x:p.x-Math.cos(p.angle)*p.radius*0.6,y:p.y-Math.sin(p.angle)*p.radius*0.6,
+            vx:(Math.random()-0.5)*0.8,vy:(Math.random()-0.5)*0.8-0.2,life:0.45+Math.random()*0.3,size:Math.random()*6+2,hueShift:Math.random()});
     }
 
-    ctx.save();
-    ctx.translate(p.x, p.y);
-    ctx.rotate(p.angle);
-    const tailLen = 120 + 200 * (1-progress);
-    const g = ctx.createLinearGradient(-tailLen,0,0,0);
-    g.addColorStop(0, 'rgba(40,120,255,0)');
-    g.addColorStop(0.35, 'rgba(80,160,255,0.15)');
-    g.addColorStop(0.7, 'rgba(255,220,100,0.25)');
-    g.addColorStop(1, 'rgba(255,240,180,0.9)');
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.ellipse(-tailLen/2, 0, tailLen, p.radius*0.9, 0, 0, Math.PI*2);
-    ctx.fill();
+    ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.angle);
+    const tailLen=120+200*(1-progress);
+    const g=ctx.createLinearGradient(-tailLen,0,0,0);
+    g.addColorStop(0,'rgba(40,120,255,0)');
+    g.addColorStop(0.35,'rgba(80,160,255,0.15)');
+    g.addColorStop(0.7,'rgba(255,220,100,0.25)');
+    g.addColorStop(1,'rgba(255,240,180,0.9)');
+    ctx.fillStyle=g; ctx.beginPath(); ctx.ellipse(-tailLen/2,0,tailLen,p.radius*0.9,0,0,Math.PI*2); ctx.fill();
 
-    const coreR = p.radius;
-    const coreG = ctx.createRadialGradient(0,0, coreR*0.1, 0,0, coreR);
-    coreG.addColorStop(0, 'rgba(160,220,255,1)');
-    coreG.addColorStop(0.5, 'rgba(60,140,255,0.95)');
-    coreG.addColorStop(0.85, 'rgba(255,210,100,0.6)');
-    coreG.addColorStop(1, 'rgba(255,200,60,0.15)');
-    ctx.fillStyle = coreG;
-    ctx.beginPath();
-    ctx.arc(0,0,coreR,0,Math.PI*2);
-    ctx.fill();
-
-    ctx.globalAlpha = 0.6*(1-progress);
-    ctx.beginPath();
-    ctx.arc(0,0, coreR*1.8,0,Math.PI*2);
-    ctx.fill();
+    const coreR=p.radius;
+    const coreG=ctx.createRadialGradient(0,0,coreR*0.1,0,0,coreR);
+    coreG.addColorStop(0,'rgba(160,220,255,1)');
+    coreG.addColorStop(0.5,'rgba(60,140,255,0.95)');
+    coreG.addColorStop(0.85,'rgba(255,210,100,0.6)');
+    coreG.addColorStop(1,'rgba(255,200,60,0.15)');
+    ctx.fillStyle=coreG; ctx.beginPath(); ctx.arc(0,0,coreR,0,Math.PI*2); ctx.fill();
+    ctx.globalAlpha=0.6*(1-progress); ctx.beginPath(); ctx.arc(0,0,coreR*1.8,0,Math.PI*2); ctx.fill();
     ctx.restore();
 
-    if (progress >= 1){
-        spawnExplosion(p.tx, p.ty);
-        spawnGroundEffect(p.tx, p.ty);
-        const idx = projectiles.indexOf(p);
-        if (idx >=0) projectiles.splice(idx,1);
-    }
+    if(progress>=1){ spawnExplosion(p.tx,p.ty); spawnGroundEffect(p.tx,p.ty); const idx=projectiles.indexOf(p); if(idx>=0)projectiles.splice(idx,1);}
 }
 
-// -------------------- 粒子更新 --------------------
+// -------------------- 粒子 --------------------
 function updateAndDrawParticles(dt){
-    for (let i = particles.length -1; i>=0; i--){
-        const pr = particles[i];
-        pr.life -= dt;
-        pr.x += pr.vx; pr.y += pr.vy; pr.vy -= 0.02;
-        if (pr.life <= 0) { particles.splice(i,1); continue; }
-        const t = Math.max(0, Math.min(1, 1 - pr.life));
-        const r = Math.round(lerp(60,255,t));
-        const g = Math.round(lerp(140,220,t));
-        const b = Math.round(lerp(255,100,t));
-        ctx.save();
-        ctx.globalAlpha = Math.min(1, pr.life*1.4);
-        ctx.fillStyle = `rgb(${r},${g},${b})`;
-        ctx.beginPath();
-        ctx.arc(pr.x, pr.y, pr.size * Math.max(0.2, pr.life), 0, Math.PI*2);
-        ctx.fill();
-        ctx.restore();
+    for(let i=particles.length-1;i>=0;i--){
+        const pr=particles[i]; pr.life-=dt; pr.x+=pr.vx; pr.y+=pr.vy; pr.vy-=0.02;
+        if(pr.life<=0){particles.splice(i,1); continue;}
+        const t=Math.max(0,Math.min(1,1-pr.life));
+        const r=Math.round(lerp(60,255,t));
+        const g=Math.round(lerp(140,220,t));
+        const b=Math.round(lerp(255,100,t));
+        ctx.save(); ctx.globalAlpha=Math.min(1,pr.life*1.4); ctx.fillStyle=`rgb(${r},${g},${b})`;
+        ctx.beginPath(); ctx.arc(pr.x,pr.y,pr.size*Math.max(0.2,pr.life),0,Math.PI*2); ctx.fill(); ctx.restore();
     }
 }
 
 // -------------------- 爆光 --------------------
-function spawnExplosion(x,y){ explosions.push({ x,y, t: now(), duration: 0.35 }); }
+function spawnExplosion(x,y){explosions.push({x,y,t:now(),duration:0.35});}
 function drawExplosions(t){
-    for (let i = explosions.length -1; i>=0; i--){
-        const ex = explosions[i];
-        const dt = (t - ex.t)/ex.duration;
-        if (dt >= 1){ explosions.splice(i,1); continue; }
-        const ease = Math.sin(dt*Math.PI);
-        const R = 10 + ease*80;
-        ctx.save();
-        ctx.globalAlpha = 1 - dt;
-        const g = ctx.createRadialGradient(ex.x,ex.y,0, ex.x,ex.y, R*1.4);
+    for(let i=explosions.length-1;i>=0;i--){
+        const ex=explosions[i]; const dt=(t-ex.t)/ex.duration;
+        if(dt>=1){explosions.splice(i,1); continue;}
+        const ease=Math.sin(dt*Math.PI); const R=10+ease*80;
+        ctx.save(); ctx.globalAlpha=1-dt;
+        const g=ctx.createRadialGradient(ex.x,ex.y,0,ex.x,ex.y,R*1.4);
         g.addColorStop(0,'rgba(255,255,220,0.95)');
         g.addColorStop(0.4,'rgba(255,220,120,0.7)');
         g.addColorStop(1,'rgba(255,120,40,0)');
-        ctx.fillStyle = g;
-        ctx.beginPath();
-        ctx.arc(ex.x,ex.y,R,0,Math.PI*2);
-        ctx.fill();
-        ctx.strokeStyle = `rgba(255,240,160,${0.9*(1-dt)})`;
-        ctx.lineWidth = 2;
-        for (let a=0;a<8;a++){
-            const ang = a*(Math.PI*2/8) + dt*2;
-            ctx.beginPath();
-            ctx.moveTo(ex.x + Math.cos(ang)*R*0.4, ex.y + Math.sin(ang)*R*0.4);
-            ctx.lineTo(ex.x + Math.cos(ang)*(R*1.2 + dt*40), ex.y + Math.sin(ang)*(R*1.2 + dt*40));
-            ctx.stroke();
-        }
+        ctx.fillStyle=g; ctx.beginPath(); ctx.arc(ex.x,ex.y,R,0,Math.PI*2); ctx.fill();
+        ctx.strokeStyle=`rgba(255,240,160,${0.9*(1-dt)})`; ctx.lineWidth=2;
+        for(let a=0;a<8;a++){const ang=a*(Math.PI*2/8)+dt*2; ctx.beginPath(); ctx.moveTo(ex.x+Math.cos(ang)*R*0.4,ex.y+Math.sin(ang)*R*0.4); ctx.lineTo(ex.x+Math.cos(ang)*(R*1.2+dt*40),ex.y+Math.sin(ang)*(R*1.2+dt*40)); ctx.stroke();}
         ctx.restore();
     }
 }
 
-// -------------------- 地面效果 --------------------
+// -------------------- 地面效果 + 魔力過多流程 --------------------
+let overLimitTriggered=false;
 function spawnGroundEffect(x,y){
-    const s = 0.9 + Math.random()*0.8;
-    groundEffects.push({ x,y, life:1.0, scale:s, rotation: Math.random()*Math.PI*2 });
-    if (groundEffects.length > effectLimit){ showCrashScreen(); }
+    const s=0.9+Math.random()*0.8;
+    groundEffects.push({x,y,life:1.0,scale:s,rotation:Math.random()*Math.PI*2});
+    if(groundEffects.length>effectLimit && !overLimitTriggered){ overLimitTriggered=true; triggerOverLimitSequence(); }
 }
 function drawGroundEffects(dt){
-    for (let i = groundEffects.length -1; i>=0; i--){
-        const ge = groundEffects[i];
-        ge.life -= dt*0.02;
-        ge.scale += 0.002;
-        if (ge.life <=0){ groundEffects.splice(i,1); continue; }
-        const baseSize = 110*ge.scale;
-        if (crackLoaded){
-            ctx.save();
-            ctx.globalAlpha = 0.9*ge.life;
-            ctx.translate(ge.x, ge.y);
-            ctx.rotate(ge.rotation);
-            ctx.drawImage(crackImg, -baseSize, -baseSize/1.6, baseSize*2, baseSize*1.2);
-            ctx.restore();
-        } else {
-            ctx.save();
-            ctx.globalAlpha = 0.6*ge.life;
-            ctx.fillStyle = '#221';
-            ctx.beginPath();
-            ctx.ellipse(ge.x, ge.y, baseSize, baseSize*0.5, ge.rotation,0,Math.PI*2);
-            ctx.fill();
-            ctx.restore();
-        }
-        if (flameLoaded){
-            ctx.save();
-            ctx.globalAlpha = 0.95*ge.life;
-            ctx.translate(ge.x, ge.y - baseSize*0.08);
-            ctx.rotate(-ge.rotation*0.4);
-            ctx.drawImage(flameImg, -baseSize*0.7, -baseSize*0.9, baseSize*1.4, baseSize*1.4);
-            ctx.restore();
-        } else {
-            const g = ctx.createRadialGradient(ge.x, ge.y - baseSize*0.08, 10, ge.x, ge.y - baseSize*0.08, baseSize);
-            g.addColorStop(0, `rgba(255,220,120,${0.95*ge.life})`);
-            g.addColorStop(0.4, `rgba(255,120,30,${0.7*ge.life})`);
-            g.addColorStop(1, `rgba(40,10,10,0)`);
-            ctx.save();
-            ctx.globalAlpha = 1;
-            ctx.fillStyle = g;
-            ctx.beginPath();
-            ctx.arc(ge.x, ge.y - baseSize*0.08, baseSize,0,Math.PI*2);
-            ctx.fill();
-            ctx.restore();
-        }
+    for(let i=groundEffects.length-1;i>=0;i--){
+        const ge=groundEffects[i]; ge.life-=dt*0.02; ge.scale+=0.002;
+        if(ge.life<=0){groundEffects.splice(i,1); continue;}
+        const baseSize=110*ge.scale;
+        if(crackLoaded){ ctx.save(); ctx.globalAlpha=0.9*ge.life; ctx.translate(ge.x,ge.y); ctx.rotate(ge.rotation); ctx.drawImage(crackImg,-baseSize,-baseSize/1.6,baseSize*2,baseSize*1.2); ctx.restore();}
+        else{ ctx.save(); ctx.globalAlpha=0.6*ge.life; ctx.fillStyle='#221'; ctx.beginPath(); ctx.ellipse(ge.x,ge.y,baseSize,baseSize*0.5,ge.rotation,0,Math.PI*2); ctx.fill(); ctx.restore();}
+        if(flameLoaded){ ctx.save(); ctx.globalAlpha=0.95*ge.life; ctx.translate(ge.x,ge.y-baseSize*0.08); ctx.rotate(-ge.rotation*0.4); ctx.drawImage(flameImg,-baseSize*0.7,-baseSize*0.9,baseSize*1.4,baseSize*1.4); ctx.restore();}
+        else{ const g=ctx.createRadialGradient(ge.x,ge.y-baseSize*0.08,10,ge.x,ge.y-baseSize*0.08,baseSize); g.addColorStop(0,`rgba(255,220,120,${0.95*ge.life})`); g.addColorStop(0.4,`rgba(255,120,30,${0.7*ge.life})`); g.addColorStop(1,`rgba(40,10,10,0)`); ctx.save(); ctx.globalAlpha=1; ctx.fillStyle=g; ctx.beginPath(); ctx.arc(ge.x,ge.y-baseSize*0.08,baseSize,0,Math.PI*2); ctx.fill(); ctx.restore();}
     }
+}
+
+// -------------------- 魔力過多流程 --------------------
+function triggerOverLimitSequence(){
+    // 屏幕抖動
+    let shakeCount=0;
+    const shakeInterval=setInterval(()=>{
+        const offset=(Math.random()-0.5)*20; // 明顯抖動
+        canvas.style.transform=`translate(${offset}px,${offset}px)`;
+        shakeCount++;
+        if(shakeCount>15){ clearInterval(shakeInterval); canvas.style.transform=''; showFirstDialog();}
+    },30);
+}
+
+function showFirstDialog(){
+    const overlay=document.getElementById('dialogOverlay');
+    overlay.style.background='rgba(0,0,0,0.85)';
+    overlay.style.color='#fff';
+    overlay.style.display='flex';
+    overlay.innerHTML='哈哈!我終於成功了，但是魔力失控後，一切都會…都會…';
+    setTimeout(showSecondDialog,3000);
+}
+
+function showSecondDialog(){
+    const overlay=document.getElementById('dialogOverlay');
+    overlay.innerHTML='<span class="red">歸零！</span>';
+    setTimeout(()=>{ 
+        // fade out
+        overlay.style.transition='opacity 1s'; overlay.style.opacity=0;
+        setTimeout(()=>{ document.title='無回應'; location.reload(); },1000);
+    },1500);
 }
 
 // -------------------- 當機 --------------------
-function showCrashScreen(){
-    running = false;
-    document.getElementById('crashOverlay').style.display = 'flex';
-}
+function showCrashScreen(){ running=false; document.getElementById('crashOverlay').style.display='flex'; }
 
 // -------------------- 角色繪製 --------------------
 function drawCharacter(){
-    if (characterLoaded){
-        ctx.drawImage(characterImg, character.x - character.size, character.y - character.size, character.size*2, character.size*2);
-    } else {
-        ctx.save();
-        ctx.fillStyle = '#5fd0ff';
-        ctx.beginPath();
-        ctx.arc(character.x, character.y, character.size,0,Math.PI*2);
-        ctx.fill();
-        ctx.strokeStyle = '#32a0ff';
-        ctx.lineWidth = 3;
-        ctx.stroke();
-        ctx.restore();
-    }
+    if(characterLoaded){ ctx.drawImage(characterImg, character.x-character.size, character.y-character.size, character.size*2, character.size*2);}
+    else{ ctx.save(); ctx.fillStyle='#5fd0ff'; ctx.beginPath(); ctx.arc(character.x,character.y,character.size,0,Math.PI*2); ctx.fill(); ctx.strokeStyle='#32a0ff'; ctx.lineWidth=3; ctx.stroke(); ctx.restore();}
 }
 
 // -------------------- 主迴圈 --------------------
-let lastTime = now();
+let lastTime=now();
 function loop(){
-    if (!running) return;
-    const t = now();
-    const dt = Math.min(0.05, t - lastTime);
-    lastTime = t;
+    if(!running) return;
+    const t=now(); const dt=Math.min(0.05,t-lastTime); lastTime=t;
     ctx.clearRect(0,0,canvas.width,canvas.height);
-    moveCharacter();
-    drawCharacter();
-    for (let i = projectiles.length-1; i>=0; i--){ drawProjectile(projectiles[i], t); }
-    updateAndDrawParticles(dt);
-    drawExplosions(t);
-    drawGroundEffects(dt);
+    moveCharacter(); drawCharacter();
+    for(let i=projectiles.length-1;i>=0;i--){drawProjectile(projectiles[i],t);}
+    updateAndDrawParticles(dt); drawExplosions(t); drawGroundEffects(dt);
     requestAnimationFrame(loop);
 }
-startIfNeeded(); // 確保即使圖片沒載入動畫也啟動
+
+startIfNeeded(); // 啟動動畫
 </script>
 </body>
 </html>
 
-</html>
 
