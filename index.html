@@ -1,242 +1,120 @@
-<!DOCTYPE html>
-<html lang="zh-Hant">
-<head>
-<meta charset="UTF-8" />
-<title>流星魔法</title>
-<style>
-html,body{height:100%;margin:0;overflow:hidden;background:#0b0b10;}
-#gameCanvas{display:block;}
-#hint{
-    position: fixed;
-    top: 12px; left: 12px;
-    color: #fff;
-    font-family: sans-serif;
-    background: rgba(0,0,0,0.7);
-    padding: 8px 12px;
-    border-radius: 6px;
-    z-index:10;
-    font-size: 1.2em;
-}
-#dialogOverlay{
-    display:none;
-    position:fixed;
-    inset:0;
-    z-index:9999;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    text-align:center;
-    font-family:sans-serif;
-    pointer-events:none;
-    white-space: pre-wrap;
-}
-#crashOverlay{
-    display:none;
-    position:fixed;
-    inset:0;
-    background:rgba(10,0,0,0.95);
-    z-index:9999;
-    align-items:center;
-    justify-content:center;
-    color:#ffdddd;
-    font-family:sans-serif;
-}
-</style>
-</head>
+function triggerOverload() {
+    if (overloading) return;
+    overloading = true;
 
-<body>
-<div id="hint">點擊任意一處發射魔法</div>
-<canvas id="gameCanvas"></canvas>
-<div id="dialogOverlay"></div>
-
-<script>
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
-function resize(){canvas.width=window.innerWidth;canvas.height=window.innerHeight;}
-window.addEventListener('resize',resize); resize();
-
-// -------------------- 圖片 --------------------
-const characterImg=new Image(); characterImg.src='character.png';
-let characterLoaded=false; characterImg.onload=()=>{characterLoaded=true;startIfNeeded();};
-characterImg.onerror=()=>startIfNeeded();
-
-const flameImg=new Image(); flameImg.src='flame.png';
-let flameLoaded=false; flameImg.onload=()=>flameLoaded=true;
-
-const crackImg=new Image(); crackImg.src='crack.png';
-let crackLoaded=false; crackImg.onload=()=>crackLoaded=true;
-
-// -------------------- 基本參數 --------------------
-const characterHeadPx=50;
-const projectileRadius=Math.round(characterHeadPx*0.95);
-const projectileTravelTime=1.0;
-const effectLimit=25;
-
-let running=false;
-let introPlayed=false;
-
-let character={
-    x:canvas.width/2,
-    y:canvas.height/2,
-    size:characterHeadPx/2,
-    vx:(Math.random()-0.5)*3,
-    vy:(Math.random()-0.5)*3
-};
-
-let projectiles=[], explosions=[], groundEffects=[], particles=[];
-let overLimitTriggered=false;
-let savedVx=0,savedVy=0;
-
-function now(){return performance.now()/1000;}
-function lerp(a,b,t){return a+(b-a)*t;}
-
-// -------------------- 開場對話 --------------------
-function showIntroDialog(){
-    const overlay=document.getElementById('dialogOverlay');
-    overlay.style.display='flex';
-    overlay.style.background='whiteblack';
-    overlay.style.color='white';
-    overlay.style.fontSize='3.5em';
-    overlay.style.opacity=1;
-    overlay.style.transition='opacity 1s';
-    overlay.innerHTML='新的世界?\n哇哈哈!\n我要在這裡搞破壞!';
-
-    savedVx=character.vx;
-    savedVy=character.vy;
-    character.vx=0; character.vy=0;
-
-    setTimeout(()=>{
-        overlay.style.opacity=0;
-        setTimeout(()=>{
-            overlay.style.display='none';
-            character.vx=savedVx;
-            character.vy=savedVy;
-            introPlayed=true;
-            startIfNeeded();
-        },1000);
-    },3000);
+    // 1. 全螢幕抖動
+    document.body.classList.add("shake");
+    setTimeout(() => {
+        document.body.classList.remove("shake");
+        showFullScreenDialogue();
+    }, 800);
 }
 
-function startIfNeeded(){
-    if(running) return;
-    if(!introPlayed){
-        showIntroDialog();
-        return;
+function showFullScreenDialogue() {
+    const screen = document.createElement("div");
+    screen.id = "dialogueScreen";
+    Object.assign(screen.style, {
+        position: "fixed",
+        top: "0",
+        left: "0",
+        width: "100vw",
+        height: "100vh",
+        background: "black",
+        color: "white",
+        fontSize: "2.8rem",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        textAlign: "center",
+        zIndex: "9999",
+        opacity: "0",
+        transition: "opacity 0.5s"
+    });
+    document.body.appendChild(screen);
+
+    // 讓畫面淡入
+    setTimeout(() => {
+        screen.style.opacity = "1";
+    }, 50);
+
+    // 角色台詞
+    const lines = [
+        "哈哈！我終於成功了…",
+        "但是魔力失控後，一切都會…… 都會……"
+    ];
+
+    let index = 0;
+
+    function nextLine() {
+        if (index < lines.length) {
+            screen.innerHTML = lines[index];
+            index++;
+            setTimeout(nextLine, 1500); // ⬅ 延遲變長
+        } else {
+            showZeroEffect(screen);
+        }
     }
-    running=true;
-    requestAnimationFrame(loop);
+
+    nextLine();
 }
 
-// -------------------- 角色 --------------------
-function moveCharacter(){
-    character.x+=character.vx;
-    character.y+=character.vy;
-    if(character.x-character.size<0||character.x+character.size>canvas.width) character.vx*=-1;
-    if(character.y-character.size<0||character.y+character.size>canvas.height) character.vy*=-1;
+function showZeroEffect(screen) {
+    screen.innerHTML = "";
+
+    const zero1 = document.createElement("div");
+    const zero2 = document.createElement("div");
+
+    Object.assign(zero1.style, effectStyle("歸", "-20px"));
+    Object.assign(zero2.style, effectStyle("零", "20px"));
+
+    screen.appendChild(zero1);
+    screen.appendChild(zero2);
+
+    setTimeout(() => {
+        darkenAndReload();
+    }, 1600);
 }
 
-function drawCharacter(){
-    if(characterLoaded){
-        ctx.drawImage(characterImg,
-            character.x-character.size,
-            character.y-character.size,
-            character.size*2,
-            character.size*2);
-    }else{
-        ctx.fillStyle='#5fd0ff';
-        ctx.beginPath();
-        ctx.arc(character.x,character.y,character.size,0,Math.PI*2);
-        ctx.fill();
-    }
+function effectStyle(text, offset) {
+    return {
+        position: "absolute",
+        top: "50%",
+        left: `calc(50% + ${offset})`,
+        transform: "translate(-50%, -50%) scale(1)",
+        padding: "25px 50px",
+        background: "red",
+        color: "white",
+        fontSize: "4rem",
+        fontWeight: "900",
+        borderRadius: "10px",
+        animation: "pulse 0.5s infinite alternate",
+        content: `"${text}"`,
+    };
 }
 
-// -------------------- 魔法 --------------------
-canvas.addEventListener('click',e=>{
-    const r=canvas.getBoundingClientRect();
-    spawnProjectile(character.x,character.y,e.clientX-r.left,e.clientY-r.top);
-});
+function darkenAndReload() {
+    // 全黑遮罩
+    const dark = document.createElement("div");
+    Object.assign(dark.style, {
+        position: "fixed",
+        top: "0",
+        left: "0",
+        width: "100vw",
+        height: "100vh",
+        background: "black",
+        opacity: "0",
+        transition: "opacity 1s",
+        zIndex: "10000"
+    });
+    document.body.appendChild(dark);
 
-function spawnProjectile(sx,sy,tx,ty){
-    const t0=now();
-    projectiles.push({sx,sy,tx,ty,x:sx,y:sy,t0});
+    setTimeout(() => {
+        dark.style.opacity = "1";
+        document.title = "（無回應）";
+    }, 50);
+
+    setTimeout(() => {
+        location.reload();   // ⬅ 正常重跑
+    }, 1800);
 }
-
-function drawProjectile(p,t){
-    const prog=Math.min(1,(t-p.t0)/projectileTravelTime);
-    p.x=lerp(p.sx,p.tx,prog);
-    p.y=lerp(p.sy,p.ty,prog);
-
-    ctx.fillStyle='rgba(255,220,120,0.9)';
-    ctx.beginPath();
-    ctx.arc(p.x,p.y,projectileRadius,0,Math.PI*2);
-    ctx.fill();
-
-    if(prog>=1){
-        spawnGroundEffect(p.tx,p.ty);
-        projectiles.splice(projectiles.indexOf(p),1);
-    }
-}
-
-// -------------------- 地面效果 & 過載 --------------------
-function spawnGroundEffect(x,y){
-    groundEffects.push({x,y,life:1});
-    if(groundEffects.length>effectLimit && !overLimitTriggered){
-        overLimitTriggered=true;
-        triggerOverLimitSequence();
-    }
-}
-
-function drawGroundEffects(dt){
-    for(let i=groundEffects.length-1;i>=0;i--){
-        const g=groundEffects[i];
-        g.life-=dt*0.02;
-        if(g.life<=0){groundEffects.splice(i,1);continue;}
-        ctx.globalAlpha=g.life;
-        ctx.fillStyle='#ff7722';
-        ctx.beginPath();
-        ctx.arc(g.x,g.y,80*g.life,0,Math.PI*2);
-        ctx.fill();
-    }
-    ctx.globalAlpha=1;
-}
-
-// -------------------- 過載對話 --------------------
-function triggerOverLimitSequence(){
-    savedVx=character.vx;
-    savedVy=character.vy;
-    character.vx=0; character.vy=0;
-
-    const overlay=document.getElementById('dialogOverlay');
-    overlay.style.display='flex';
-    overlay.style.background='black';
-    overlay.style.color='white';
-    overlay.style.fontSize='3em';
-    overlay.innerHTML='哈哈!我終於成功了，但是魔力失控後，一切都會…';
-
-    setTimeout(()=>{
-        overlay.style.color='red';
-        overlay.style.fontSize='4em';
-        overlay.innerHTML='歸零！';
-        setTimeout(()=>location.reload(),3000);
-    },3000);
-}
-
-// -------------------- 主迴圈 --------------------
-let lastTime=now();
-function loop(){
-    const t=now();
-    const dt=t-lastTime; lastTime=t;
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-
-    moveCharacter();
-    drawCharacter();
-
-    projectiles.forEach(p=>drawProjectile(p,t));
-    drawGroundEffects(dt);
-
-    requestAnimationFrame(loop);
-}
-</script>
-</body>
-</html>
 
