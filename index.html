@@ -234,11 +234,11 @@ function showSecondDialog(){
     
     setTimeout(()=>{
         overlay.style.transition='opacity 1s';
-        overlay.style.opacity=0;
+        overlay.style.opacity=100;
 
         setTimeout(()=>{
             ctx.fillStyle='black';
-            ctx.fillRect(0,0,canvas.width,canvas.height);
+            ctx.fillRect(0,0,canvas.width,canvas.height); 
             document.title='無回應';
             setTimeout(()=>{
                 location.reload();
