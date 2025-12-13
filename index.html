@@ -66,39 +66,19 @@ html,body{height:100%;margin:0;overflow:hidden;background:#0b0b10;}
 </div>
 
 <script>
-    // -------------------- 開場對話 --------------------
-let introPlayed = false;
-
-function showIntroDialog(){
-    const overlay = document.getElementById('dialogOverlay');
-    overlay.style.display = 'flex';
-    overlay.style.pointerEvents = 'none';
-    overlay.style.opacity = 1;
-    overlay.style.transition = 'opacity 1s';
-    overlay.style.background = 'white';
-    overlay.style.color = 'black';
-    overlay.style.fontSize = '3.5em';
-    overlay.innerHTML = '新的世界?\n哇哈哈!\n我要在這裡搞破壞!';
-
-    // 角色先不要動
+function showFirstDialog(){
     savedVx = character.vx;
     savedVy = character.vy;
-    character.vx = 0;
-    character.vy = 0;
+    character.vx=0; character.vy=0;
 
-    // 3 秒後淡出，開始遊戲
-    setTimeout(()=>{
-        overlay.style.opacity = 0;
-
-        setTimeout(()=>{
-            overlay.style.display = 'none';
-            character.vx = savedVx;
-            character.vy = savedVy;
-            introPlayed = true;
-            startIfNeeded();
-        },1000);
-
-    },3000);
+    const overlay=document.getElementById('dialogOverlay');
+    overlay.style.display='flex';
+    overlay.style.opacity=1;
+    overlay.style.fontSize='3em';
+    overlay.style.background='black';
+    overlay.style.color='white';
+    overlay.innerHTML='新的世界?哇哈哈!那我要來搞破壞!';
+    setTimeout(showSecondDialog,3000);
 }
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
