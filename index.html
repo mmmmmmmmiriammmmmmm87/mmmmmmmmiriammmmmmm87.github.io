@@ -66,6 +66,39 @@ html,body{height:100%;margin:0;overflow:hidden;background:#0b0b10;}
 </div>
 
 <script>
+    let introPlayed = false;
+
+function showIntroDialog(){
+    const overlay = document.getElementById('dialogOverlay');
+    overlay.style.display = 'flex';
+    overlay.style.pointerEvents = 'none';
+    overlay.style.opacity = 1;
+    overlay.style.transition = 'opacity 1s';
+    overlay.style.background = 'black';
+    overlay.style.color = 'white';
+    overlay.style.fontSize = '3.5em';
+    overlay.innerHTML = '新的世界?\n哇哈哈!\n我要在這裡搞破壞!';
+
+    // 角色先不要動
+    savedVx = character.vx;
+    savedVy = character.vy;
+    character.vx = 0;
+    character.vy = 0;
+
+    // 3 秒後淡出，開始遊戲
+    setTimeout(()=>{
+        overlay.style.opacity = 0;
+
+        setTimeout(()=>{
+            overlay.style.display = 'none';
+            character.vx = savedVx;
+            character.vy = savedVy;
+            introPlayed = true;
+            startIfNeeded();
+        },1000);
+
+    },3000);
+}
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 function resize(){canvas.width = window.innerWidth; canvas.height = window.innerHeight;}
@@ -93,7 +126,7 @@ let savedVx,savedVy;
 
 function now(){return performance.now()/1000;}
 function lerp(a,b,t){return a+(b-a)*t;}
-function startIfNeeded(){if(!running){running=true;requestAnimationFrame(loop);}}
+function startIfNeeded(){if(!introPlayed)showIntroDialog();return;{running=true;requestAnimationFrame(loop);}}
 
 function moveCharacter(){
     character.x+=character.vx; character.y+=character.vy;
@@ -235,6 +268,8 @@ function showSecondDialog(){
     setTimeout(()=>{
         overlay.style.transition='opacity 1s';
         overlay.style.opacity=100;
+        overlay.style.background='black';
+        overlay.style.color='white';
         overlay.innerHTML='等待回應中...';
 
         setTimeout(()=>{
