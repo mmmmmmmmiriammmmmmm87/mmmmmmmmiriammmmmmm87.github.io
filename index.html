@@ -21,12 +21,15 @@ html,body{height:100%;margin:0;overflow:hidden;background:#0b0b10;}
     display:none;
     position:fixed;
     inset:0;
+    background:rgba(0,0,0,0);
     z-index:9999;
     display:flex;
     align-items:center;
     justify-content:center;
     text-align:center;
     font-family:sans-serif;
+    font-size:2em;
+    color:#fff;
     pointer-events:none;
     white-space: pre-wrap;
 }
@@ -41,201 +44,228 @@ html,body{height:100%;margin:0;overflow:hidden;background:#0b0b10;}
     color:#ffdddd;
     font-family:sans-serif;
 }
+#crashOverlay h1{
+    font-size:56px;
+    color:#ff6666;
+    text-shadow:0 0 12px #ff0000;
+}
+#crashOverlay p{
+    font-size:20px;
+}
 </style>
 </head>
-
 <body>
 <div id="hint">點擊任意一處發射魔法</div>
 <canvas id="gameCanvas"></canvas>
 <div id="dialogOverlay"></div>
+<div id="crashOverlay">
+    <div style="text-align:center">
+        <h1>系統當機</h1>
+        <p>魔法能量過載，動畫已停止。</p>
+    </div>
+</div>
 
 <script>
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
-function resize(){canvas.width=window.innerWidth;canvas.height=window.innerHeight;}
-window.addEventListener('resize',resize); resize();
+function resize(){canvas.width = window.innerWidth; canvas.height = window.innerHeight;}
+window.addEventListener('resize', resize);
+resize();
 
-// -------------------- 圖片 --------------------
-const characterImg=new Image(); characterImg.src='character.png';
-let characterLoaded=false; characterImg.onload=()=>{characterLoaded=true;startIfNeeded();};
-characterImg.onerror=()=>startIfNeeded();
-
+const characterImg = new Image(); characterImg.src='character.png';
+let characterLoaded=false; characterImg.onload=()=>{characterLoaded=true; startIfNeeded();};
+characterImg.onerror=()=>{characterLoaded=false; startIfNeeded();};
 const flameImg=new Image(); flameImg.src='flame.png';
-let flameLoaded=false; flameImg.onload=()=>flameLoaded=true;
-
+let flameLoaded=false; flameImg.onload=()=>flameLoaded=true; flameImg.onerror=()=>flameLoaded=false;
 const crackImg=new Image(); crackImg.src='crack.png';
-let crackLoaded=false; crackImg.onload=()=>crackLoaded=true;
+let crackLoaded=false; crackImg.onload=()=>crackLoaded=true; crackImg.onerror=()=>crackLoaded=false;
 
-// -------------------- 基本參數 --------------------
 const characterHeadPx=50;
 const projectileRadius=Math.round(characterHeadPx*0.95);
 const projectileTravelTime=1.0;
 const effectLimit=25;
 
 let running=false;
-let introPlayed=false;
-
-let character={
-    x:canvas.width/2,
-    y:canvas.height/2,
-    size:characterHeadPx/2,
-    vx:(Math.random()-0.5)*3,
-    vy:(Math.random()-0.5)*3
-};
-
+let character={x:canvas.width/2,y:canvas.height/2,size:characterHeadPx/2,vx:(Math.random()-0.5)*3,vy:(Math.random()-0.5)*3};
 let projectiles=[], explosions=[], groundEffects=[], particles=[];
 let overLimitTriggered=false;
-let savedVx=0,savedVy=0;
+let savedVx,savedVy;
 
 function now(){return performance.now()/1000;}
 function lerp(a,b,t){return a+(b-a)*t;}
+function startIfNeeded(){if(!running){running=true;requestAnimationFrame(loop);}}
 
-// -------------------- 開場對話 --------------------
-function showIntroDialog(){
-    const overlay=document.getElementById('dialogOverlay');
-    overlay.style.display='flex';
-    overlay.style.background='white';
-    overlay.style.color='black';
-    overlay.style.fontSize='3.5em';
-    overlay.style.opacity=1;
-    overlay.style.transition='opacity 1s';
-    overlay.innerHTML='新的世界?\n哇哈哈!\n我要在這裡搞破壞!';
-
-    savedVx=character.vx;
-    savedVy=character.vy;
-    character.vx=0; character.vy=0;
-
-    setTimeout(()=>{
-        overlay.style.opacity=0;
-        setTimeout(()=>{
-            overlay.style.display='none';
-            character.vx=savedVx;
-            character.vy=savedVy;
-            introPlayed=true;
-            startIfNeeded();
-        },1000);
-    },3000);
-}
-
-function startIfNeeded(){
-    if(running) return;
-    if(!introPlayed){
-        showIntroDialog();
-        return;
-    }
-    running=true;
-    requestAnimationFrame(loop);
-}
-
-// -------------------- 角色 --------------------
 function moveCharacter(){
-    character.x+=character.vx;
-    character.y+=character.vy;
+    character.x+=character.vx; character.y+=character.vy;
     if(character.x-character.size<0||character.x+character.size>canvas.width) character.vx*=-1;
     if(character.y-character.size<0||character.y+character.size>canvas.height) character.vy*=-1;
 }
 
-function drawCharacter(){
-    if(characterLoaded){
-        ctx.drawImage(characterImg,
-            character.x-character.size,
-            character.y-character.size,
-            character.size*2,
-            character.size*2);
-    }else{
-        ctx.fillStyle='#5fd0ff';
-        ctx.beginPath();
-        ctx.arc(character.x,character.y,character.size,0,Math.PI*2);
-        ctx.fill();
-    }
-}
-
-// -------------------- 魔法 --------------------
-canvas.addEventListener('click',e=>{
-    const r=canvas.getBoundingClientRect();
-    spawnProjectile(character.x,character.y,e.clientX-r.left,e.clientY-r.top);
+canvas.addEventListener('click',(e)=>{
+    const rect=canvas.getBoundingClientRect();
+    const tx=e.clientX-rect.left;
+    const ty=e.clientY-rect.top;
+    spawnProjectile(character.x,character.y,tx,ty);
 });
-
 function spawnProjectile(sx,sy,tx,ty){
-    const t0=now();
-    projectiles.push({sx,sy,tx,ty,x:sx,y:sy,t0});
+    const t0=now(), t1=t0+projectileTravelTime;
+    const angle=Math.atan2(ty-sy,tx-sx);
+    projectiles.push({sx,sy,tx,ty,x:sx,y:sy,t0,t1,angle,radius:projectileRadius,tailTimer:0});
 }
 
 function drawProjectile(p,t){
-    const prog=Math.min(1,(t-p.t0)/projectileTravelTime);
-    p.x=lerp(p.sx,p.tx,prog);
-    p.y=lerp(p.sy,p.ty,prog);
+    const progress=Math.min(1,(t-p.t0)/(p.t1-p.t0));
+    p.x=lerp(p.sx,p.tx,progress); p.y=lerp(p.sy,p.ty,progress);
 
-    ctx.fillStyle='rgba(255,220,120,0.9)';
-    ctx.beginPath();
-    ctx.arc(p.x,p.y,projectileRadius,0,Math.PI*2);
-    ctx.fill();
+    p.tailTimer++; 
+    if(p.tailTimer%2===0){
+        particles.push({x:p.x-Math.cos(p.angle)*p.radius*0.6,y:p.y-Math.sin(p.angle)*p.radius*0.6,
+            vx:(Math.random()-0.5)*0.8,vy:(Math.random()-0.5)*0.8-0.2,life:0.45+Math.random()*0.3,size:Math.random()*6+2,hueShift:Math.random()});
+    }
 
-    if(prog>=1){
-        spawnGroundEffect(p.tx,p.ty);
-        projectiles.splice(projectiles.indexOf(p),1);
+    ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.angle);
+    const tailLen=120+200*(1-progress);
+    const g=ctx.createLinearGradient(-tailLen,0,0,0);
+    g.addColorStop(0,'rgba(40,120,255,0)');
+    g.addColorStop(0.35,'rgba(80,160,255,0.15)');
+    g.addColorStop(0.7,'rgba(255,220,100,0.25)');
+    g.addColorStop(1,'rgba(255,240,180,0.9)');
+    ctx.fillStyle=g; ctx.beginPath(); ctx.ellipse(-tailLen/2,0,tailLen,p.radius*0.9,0,0,Math.PI*2); ctx.fill();
+
+    const coreR=p.radius;
+    const coreG=ctx.createRadialGradient(0,0,coreR*0.1,0,0,coreR);
+    coreG.addColorStop(0,'rgba(160,220,255,1)');
+    coreG.addColorStop(0.5,'rgba(60,140,255,0.95)');
+    coreG.addColorStop(0.85,'rgba(255,210,100,0.6)');
+    coreG.addColorStop(1,'rgba(255,200,60,0.15)');
+    ctx.fillStyle=coreG; ctx.beginPath(); ctx.arc(0,0,coreR,0,Math.PI*2); ctx.fill();
+    ctx.globalAlpha=0.6*(1-progress); ctx.beginPath(); ctx.arc(0,0,coreR*1.8,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+
+    if(progress>=1){ spawnExplosion(p.tx,p.ty); spawnGroundEffect(p.tx,p.ty); const idx=projectiles.indexOf(p); if(idx>=0)projectiles.splice(idx,1);}
+}
+
+function updateAndDrawParticles(dt){
+    for(let i=particles.length-1;i>=0;i--){
+        const pr=particles[i]; pr.life-=dt; pr.x+=pr.vx; pr.y+=pr.vy; pr.vy-=0.02;
+        if(pr.life<=0){particles.splice(i,1); continue;}
+        const t=Math.max(0,Math.min(1,1-pr.life));
+        const r=Math.round(lerp(60,255,t));
+        const g=Math.round(lerp(140,220,t));
+        const b=Math.round(lerp(255,100,t));
+        ctx.save(); ctx.globalAlpha=Math.min(1,pr.life*1.4); ctx.fillStyle=`rgb(${r},${g},${b})`;
+        ctx.beginPath(); ctx.arc(pr.x,pr.y,pr.size*Math.max(0.2,pr.life),0,Math.PI*2); ctx.fill(); ctx.restore();
     }
 }
 
-// -------------------- 地面效果 & 過載 --------------------
+function spawnExplosion(x,y){explosions.push({x,y,t:now(),duration:0.35});}
+function drawExplosions(t){
+    for(let i=explosions.length-1;i>=0;i--){
+        const ex=explosions[i]; const dt=(t-ex.t)/ex.duration;
+        if(dt>=1){explosions.splice(i,1); continue;}
+        const ease=Math.sin(dt*Math.PI); const R=10+ease*80;
+        ctx.save(); ctx.globalAlpha=1-dt;
+        const g=ctx.createRadialGradient(ex.x,ex.y,0,ex.x,ex.y,R*1.4);
+        g.addColorStop(0,'rgba(255,255,220,0.95)');
+        g.addColorStop(0.4,'rgba(255,220,120,0.7)');
+        g.addColorStop(1,'rgba(255,120,40,0)');
+        ctx.fillStyle=g; ctx.beginPath(); ctx.arc(ex.x,ex.y,R,0,Math.PI*2); ctx.fill();
+        ctx.strokeStyle=`rgba(255,240,160,${0.9*(1-dt)})`; ctx.lineWidth=2;
+        for(let a=0;a<8;a++){const ang=a*(Math.PI*2/8)+dt*2; ctx.beginPath(); ctx.moveTo(ex.x+Math.cos(ang)*R*0.4,ex.y+Math.sin(ang)*R*0.4); ctx.lineTo(ex.x+Math.cos(ang)*(R*1.2+dt*40),ex.y+Math.sin(ang)*(R*1.2+dt*40)); ctx.stroke();}
+        ctx.restore();
+    }
+}
+
 function spawnGroundEffect(x,y){
-    groundEffects.push({x,y,life:1});
-    if(groundEffects.length>effectLimit && !overLimitTriggered){
-        overLimitTriggered=true;
-        triggerOverLimitSequence();
-    }
+    const s=0.9+Math.random()*0.8;
+    groundEffects.push({x,y,life:1.0,scale:s,rotation:Math.random()*Math.PI*2});
+    if(groundEffects.length>effectLimit && !overLimitTriggered){ overLimitTriggered=true; triggerOverLimitSequence(); }
 }
-
 function drawGroundEffects(dt){
     for(let i=groundEffects.length-1;i>=0;i--){
-        const g=groundEffects[i];
-        g.life-=dt*0.02;
-        if(g.life<=0){groundEffects.splice(i,1);continue;}
-        ctx.globalAlpha=g.life;
-        ctx.fillStyle='#ff7722';
-        ctx.beginPath();
-        ctx.arc(g.x,g.y,80*g.life,0,Math.PI*2);
-        ctx.fill();
+        const ge=groundEffects[i]; ge.life-=dt*0.02; ge.scale+=0.002;
+        if(ge.life<=0){groundEffects.splice(i,1); continue;}
+        const baseSize=110*ge.scale;
+        if(crackLoaded){ ctx.save(); ctx.globalAlpha=0.9*ge.life; ctx.translate(ge.x,ge.y); ctx.rotate(ge.rotation); ctx.drawImage(crackImg,-baseSize,-baseSize/1.6,baseSize*2,baseSize*1.2); ctx.restore();}
+        else{ ctx.save(); ctx.globalAlpha=0.6*ge.life; ctx.fillStyle='#221'; ctx.beginPath(); ctx.ellipse(ge.x,ge.y,baseSize,baseSize*0.5,ge.rotation,0,Math.PI*2); ctx.fill(); ctx.restore();}
+        if(flameLoaded){ ctx.save(); ctx.globalAlpha=0.95*ge.life; ctx.translate(ge.x,ge.y-baseSize*0.08); ctx.rotate(-ge.rotation*0.4); ctx.drawImage(flameImg,-baseSize*0.7,-baseSize*0.9,baseSize*1.4,baseSize*1.4); ctx.restore();}
+        else{ const g=ctx.createRadialGradient(ge.x,ge.y-baseSize*0.08,10,ge.x,ge.y-baseSize*0.08,baseSize); g.addColorStop(0,`rgba(255,220,120,${0.95*ge.life})`); g.addColorStop(0.4,`rgba(255,120,30,${0.7*ge.life})`); g.addColorStop(1,`rgba(40,10,10,0)`); ctx.save(); ctx.globalAlpha=1; ctx.fillStyle=g; ctx.beginPath(); ctx.arc(ge.x,ge.y-baseSize*0.08,baseSize,0,Math.PI*2); ctx.fill(); ctx.restore();}
     }
-    ctx.globalAlpha=1;
 }
 
-// -------------------- 過載對話 --------------------
+// -------------------- 魔力過多流程 --------------------
 function triggerOverLimitSequence(){
-    savedVx=character.vx;
-    savedVy=character.vy;
+    let shakeCount=0;
+    const shakeInterval=setInterval(()=>{
+        const offsetX=(Math.random()-0.5)*20;
+        const offsetY=(Math.random()-0.5)*20;
+        canvas.style.transform=`translate(${offsetX}px,${offsetY}px)`;
+        shakeCount++;
+        if(shakeCount>15){ 
+            clearInterval(shakeInterval); 
+            canvas.style.transform='';
+            showFirstDialog();
+        }
+    },30);
+}
+
+// -------------------- 對話 --------------------
+function showFirstDialog(){
+    savedVx = character.vx;
+    savedVy = character.vy;
     character.vx=0; character.vy=0;
 
     const overlay=document.getElementById('dialogOverlay');
     overlay.style.display='flex';
+    overlay.style.opacity=1;
+    overlay.style.fontSize='3em';
     overlay.style.background='black';
     overlay.style.color='white';
-    overlay.style.fontSize='3em';
-    overlay.innerHTML='哈哈!我終於成功了，但是魔力失控後，一切都會…';
+    overlay.innerHTML='哈哈!我終於成功了，但是魔力失控後，一切都會…都會…';
+    setTimeout(showSecondDialog,3000);
+}
 
+function showSecondDialog(){
+    const overlay=document.getElementById('dialogOverlay');
+    overlay.style.fontSize='4em';
+    overlay.style.background='black';
+    overlay.style.color='red';
+    overlay.innerHTML='歸零！';
+    
     setTimeout(()=>{
-        overlay.style.color='red';
-        overlay.style.fontSize='4em';
-        overlay.innerHTML='歸零！';
-        setTimeout(()=>location.reload(),3000);
-    },3000);
+        overlay.style.transition='opacity 1s';
+        overlay.style.opacity=0;
+
+        setTimeout(()=>{
+            ctx.fillStyle='black';
+            ctx.fillRect(0,0,canvas.width,canvas.height);
+            document.title='無回應';
+            setTimeout(()=>{
+                location.reload();
+            },5000);
+        },1000);
+    },1500);
+}
+
+// -------------------- 角色繪製 --------------------
+function drawCharacter(){
+    if(characterLoaded){ ctx.drawImage(characterImg, character.x-character.size, character.y-character.size, character.size*2, character.size*2);}
+    else{ ctx.save(); ctx.fillStyle='#5fd0ff'; ctx.beginPath(); ctx.arc(character.x,character.y,character.size,0,Math.PI*2); ctx.fill(); ctx.strokeStyle='#32a0ff'; ctx.lineWidth=3; ctx.stroke(); ctx.restore();}
 }
 
 // -------------------- 主迴圈 --------------------
 let lastTime=now();
 function loop(){
-    const t=now();
-    const dt=t-lastTime; lastTime=t;
+    if(!running) return;
+    const t=now(); const dt=Math.min(0.05,t-lastTime); lastTime=t;
     ctx.clearRect(0,0,canvas.width,canvas.height);
-
-    moveCharacter();
-    drawCharacter();
-
-    projectiles.forEach(p=>drawProjectile(p,t));
-    drawGroundEffects(dt);
-
+    moveCharacter(); drawCharacter();
+    for(let i=projectiles.length-1;i>=0;i--){drawProjectile(projectiles[i],t);}
+    updateAndDrawParticles(dt); drawExplosions(t); drawGroundEffects(dt);
     requestAnimationFrame(loop);
 }
+
+startIfNeeded();
 </script>
 </body>
 </html>
