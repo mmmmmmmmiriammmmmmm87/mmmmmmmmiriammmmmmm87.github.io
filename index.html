@@ -234,7 +234,7 @@ function showFirstDialog(){
     overlay.style.fontSize='3em';
     overlay.style.background='black';
     overlay.style.color='white';
-    overlay.innerHTML='哈哈!我成功了，只是魔力失控後，一切都會…都會…';
+    overlay.innerHTML='哇啊！魔力失控了…';
     setTimeout(showSecondDialog,3000);
 }
 
@@ -242,8 +242,8 @@ function showSecondDialog(){
     const overlay=document.getElementById('dialogOverlay');
     overlay.style.fontSize='4em';
     overlay.style.background='black';
-    overlay.style.color='red';
-    overlay.innerHTML='歸零！';
+    overlay.style.color='white';
+    overlay.innerHTML='完蛋啦.....';
     
     setTimeout(()=>{
         overlay.style.transition='opacity 1s';
